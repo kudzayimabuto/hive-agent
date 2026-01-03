@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "hive-agent",
+    "hive-core",
+    "hive-wasm",
+]
+resolver = "2"

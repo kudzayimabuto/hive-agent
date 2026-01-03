@@ -1,0 +1,23 @@
+# Rust
+target/
+**/*.rs.bk
+
+# Node/Web
+node_modules/
+dist/
+.env
+
+# Hive Agent
+release_bundle/
+models/
+**/*.gguf
+**/*.bin
+download_*
+test_data.txt
+build_log.txt
+.hive/
+
+# Editor
+.vscode/
+.idea/
+*.swp
