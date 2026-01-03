@@ -227,6 +227,8 @@ impl LayerWeights {
                 &q,
                 &k,
                 &v,
+                None,
+                false,
                 1. / (self.head_dim as f32).sqrt(),
                 1.,
             )?
