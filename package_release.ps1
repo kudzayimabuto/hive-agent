@@ -44,6 +44,8 @@ try {
 
 if ($hasCuda) {
     Set-Location "hive-agent"
+    # Force clean of just the hive-agent package to ensure it recompiles with the new feature flag
+    cargo clean -p hive-agent
     cargo build --release --features cuda
     Set-Location ..
     Copy-Item "$sourceDir\hive-agent.exe" -Destination "$destDir\hive-agent-cuda.exe" -Force
