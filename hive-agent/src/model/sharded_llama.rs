@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use candle_core::quantized::QTensor;
-use candle_core::quantized::{ggml_file, gguf_file};
+use candle_core::quantized::gguf_file;
 use candle_core::{DType, Device, IndexOp, Result, Tensor};
 use candle_nn::{Embedding, Module};
 

@@ -7,6 +7,7 @@ mod http_api;
 
 mod message;
 mod model;
+mod backend;
 
 use clap::{Parser, Subcommand};
 use libp2p::{
@@ -59,6 +60,26 @@ enum Commands {
         tokenizer: String, // Path to tokenizer file
         #[arg(long)]
         prompt: String,
+    },
+    /// Setup the agent environment (builds llama.cpp in WSL)
+    Setup,
+    /// Start as a Worker (RPC Server)
+    Worker {
+        #[arg(long, default_value_t = 50052)]
+        port: u16,
+        #[arg(long)]
+        vram_reserve: Option<u64>,
+    },
+    /// Start as a Controller (Client)
+    Controller {
+        #[arg(long)]
+        model: String,
+        #[arg(long)]
+        prompt: String,
+        #[arg(long)]
+        rpc: String, // e.g., 192.168.x.20:50052
+        #[arg(long, default_value_t = 99)]
+        ngl: usize, // Number of GPU layers to offload
     },
 }
 
@@ -120,6 +141,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Generating...");
             let output = engine.generate(&prompt, 50)?;
             println!("Output: {}{}", prompt, output);
+            return Ok(());
+        }
+        Some(Commands::Setup) => {
+            backend::llama_cpp::LlamaCppBackend::setup().map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+        Some(Commands::Worker { port, vram_reserve }) => {
+            backend::llama_cpp::LlamaCppBackend::start_worker(port, vram_reserve).map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+        Some(Commands::Controller { model, prompt, rpc, ngl }) => {
+            backend::llama_cpp::LlamaCppBackend::start_controller(&model, &prompt, &rpc, ngl).map_err(|e| e.to_string())?;
             return Ok(());
         }
         None | Some(Commands::Start) => {
