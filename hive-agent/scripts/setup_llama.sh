@@ -61,7 +61,8 @@ else
     cmake .. -DGGML_RPC=ON -DCMAKE_BUILD_TYPE=Release
 fi
 
-echo "Building..."
-cmake --build . --config Release -j$(nproc)
+echo "Building llama-server, llama-cli, and rpc-server..."
+cmake --build . --config Release --target llama-server llama-cli rpc-server -j$(nproc)
 
 echo "Build complete."
+ls -l bin/
