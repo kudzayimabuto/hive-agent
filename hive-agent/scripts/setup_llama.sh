@@ -3,8 +3,13 @@ set -e
 
 # Check and install essential build tools
 echo "Checking dependencies..."
-sudo apt-get update
-sudo apt-get install -y build-essential cmake
+if ! command -v cmake &> /dev/null; then
+    echo "Installing cmake..."
+    sudo apt-get update
+    sudo apt-get install -y build-essential cmake
+else
+    echo "CMake is already installed. Skipping apt update/install."
+fi
 
 # Check if we have an NVIDIA GPU
 if command -v nvidia-smi &> /dev/null; then
@@ -17,7 +22,11 @@ if command -v nvidia-smi &> /dev/null; then
     # GCC 13/12 often causes issues with CUDA compilation in WSL
     # We force install GCC 11 for compatibility
     echo "Ensuring compatible GCC-11 is installed..."
-    sudo apt-get install -y gcc-11 g++-11
+    if ! command -v gcc-11 &> /dev/null; then
+         sudo apt-get install -y gcc-11 g++-11
+    else
+         echo "GCC-11 is already installed."
+    fi
     
     export CC=gcc-11
     export CXX=g++-11
@@ -31,7 +40,7 @@ if [ -d "$LLAMA_DIR" ]; then
     echo "Updating llama.cpp..."
     cd "$LLAMA_DIR"
     git fetch origin
-    git reset --hard origin/master
+    git reset --hard origin/maste
     git pull
 else
     echo "Cloning llama.cpp..."
