@@ -118,6 +118,7 @@ impl LlamaCppBackend {
     /// Runs a single inference and returns the output as a string (for API usage)
     pub fn generate_oneshot(model_path: &str, prompt: &str, worker_rpc: &str, ngl: usize) -> Result<String, String> {
         info!("Running oneshot inference...");
+        println!("[Debug] resolving wslpath for: '{}'", model_path);
         
         let output = Command::new("wsl")
             .arg("wslpath")
@@ -126,7 +127,11 @@ impl LlamaCppBackend {
             .output()
             .map_err(|e| format!("Failed to run wslpath: {}", e))?;
             
+        println!("[Debug] wslpath output stdout: {:?}", String::from_utf8_lossy(&output.stdout));
+        println!("[Debug] wslpath output stderr: {:?}", String::from_utf8_lossy(&output.stderr));
+
         let wsl_model_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        println!("[Debug] Resolved wsl_model_path: '{}'", wsl_model_path);
 
         // Use --no-interactive and -n to ensure it exits and prints to stdout
         // We also might want to silence logs or capture them carefully.
@@ -136,6 +141,9 @@ impl LlamaCppBackend {
             wsl_model_path, prompt, worker_rpc, ngl
         );
 
+        info!("Executing oneshot command: {}", cmd);
+        println!("[Debug] Full Command: wsl bash -c '{}'", cmd);
+
         let output = Command::new("wsl")
             .arg("bash")
             .arg("-c")
@@ -143,12 +151,57 @@ impl LlamaCppBackend {
             .output()
             .map_err(|e| format!("Failed to run controller: {}", e))?;
 
-        if output.status.success() {
-             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-             Ok(stdout)
+        println!("[Debug] Resolved wsl_model_path: '{}'", wsl_model_path);
+
+        // Streaming execution
+        let mut child = Command::new("wsl")
+            .arg("bash")
+            .arg("-c")
+            .arg(&cmd)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to spawn controller: {}", e))?;
+
+        let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
+        let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
+
+        let mut output_str = String::new();
+        
+        // Spawn logs in threads to prevent deadlock (naive but works for debug)
+        let stdout_handle = std::thread::spawn(move || {
+            let reader = std::io::BufReader::new(stdout);
+            let mut acc = String::new();
+            for line in reader.lines() {
+                if let Ok(l) = line {
+                    println!("[llama-cli] {}", l);
+                    acc.push_str(&l);
+                    acc.push('\n');
+                }
+            }
+            acc
+        });
+
+        let stderr_handle = std::thread::spawn(move || {
+            let reader = std::io::BufReader::new(stderr);
+            for line in reader.lines() {
+                if let Ok(l) = line {
+                    eprintln!("[llama-cli error] {}", l);
+                }
+            }
+        });
+
+        let status = child.wait().map_err(|e| format!("Failed to wait on child: {}", e))?;
+        
+        let captured_stdout = stdout_handle.join().unwrap_or_default();
+        let _ = stderr_handle.join(); // Just finish
+
+        println!("[Debug] Command Exit Status: {}", status);
+
+        if status.success() {
+             Ok(captured_stdout)
         } else {
-             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-             Err(format!("Inference failed: {}", stderr))
+             Err(format!("Inference failed with status {}", status))
         }
     }
 }
