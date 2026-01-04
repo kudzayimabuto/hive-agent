@@ -1,6 +1,19 @@
 #!/bin/bash
 set -e
 
+# Check for required tools
+if ! command -v g++ &> /dev/null; then
+    echo "Error: g++ (C++ compiler) not found."
+    echo "Please install it in WSL using: sudo apt-get update && sudo apt-get install -y build-essential"
+    exit 1
+fi
+
+if ! command -v cmake &> /dev/null; then
+    echo "Error: cmake not found."
+    echo "Please install it in WSL using: sudo apt-get update && sudo apt-get install -y cmake"
+    exit 1
+fi
+
 LLAMA_DIR="$HOME/llama.cpp"
 REPO_URL="https://github.com/ggerganov/llama.cpp"
 
