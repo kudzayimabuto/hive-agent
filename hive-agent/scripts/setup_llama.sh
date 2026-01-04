@@ -50,7 +50,7 @@ if command -v nvidia-smi &> /dev/null; then
         -DGGML_RPC=ON \
         -DGGML_CUDA=ON \
         -DGGML_CUDA_FATBIN=OFF \
-        -DCMAKE_CUDA_ARCHITECTURES=native \
+        -DCMAKE_CUDA_ARCHITECTURES=89 \
         -DCMAKE_BUILD_TYPE=Release
 else
     echo "No NVIDIA GPU detected. Building for CPU..."
