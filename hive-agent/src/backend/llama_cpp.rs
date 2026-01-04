@@ -199,11 +199,32 @@ impl LlamaCppBackend {
         let captured_stdout = stdout_handle.join().unwrap_or_default();
         let _ = stderr_handle.join();
 
-        info!("Captured Output Length: {}", captured_stdout.len());
-        println!("[Debug] Captured Stdout: '{}'", captured_stdout);
-
         if status.success() {
-             Ok(captured_stdout)
+            // Clean up the output
+            // 1. Find the prompt echo "> "
+            // 2. Take everything after it
+            // 3. Remove the performance stats "[ Prompt:"
+            
+            let raw_output = captured_stdout;
+            let clean_output = if let Some(start_idx) = raw_output.find("> ") {
+                let after_prompt = &raw_output[start_idx..];
+                // Skip the first line (which is "> prompt")
+                let response_start = after_prompt.find('\n').unwrap_or(0);
+                let response_content = &after_prompt[response_start..];
+                
+                // Cut off at performance stats
+                if let Some(end_idx) = response_content.find("[ Prompt:") {
+                    response_content[..end_idx].trim().to_string()
+                } else {
+                    response_content.trim().to_string()
+                }
+            } else {
+                // Fallback if formatting changes, just return everything but try to trim header
+                raw_output
+            };
+
+            info!("Cleaned Output: '{}'", clean_output);
+             Ok(clean_output)
         } else {
              Err(format!("Inference failed with status {}", status))
         }
