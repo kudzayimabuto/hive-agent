@@ -8,9 +8,19 @@ impl LlamaCppBackend {
     pub fn setup() -> Result<(), String> {
         info!("Setting up llama.cpp in WSL...");
         
-        // Convert Windows path to WSL path 
-        // Assuming the script is in ./scripts/setup_llama.sh relative to CWD
         let script_path = "./scripts/setup_llama.sh";
+
+        // DEBUG: Check location and file existence
+        let _ = Command::new("wsl").arg("pwd").status();
+        let _ = Command::new("wsl").arg("ls").arg("-l").arg(script_path).status();
+
+        // FAIL-SAFE: Unixify line endings just in case git checkout messed up
+        let _ = Command::new("wsl")
+            .arg("sed")
+            .arg("-i")
+            .arg("s/\\r$//")
+            .arg(script_path)
+            .status();
         
         let status = Command::new("wsl")
             .arg("bash")
