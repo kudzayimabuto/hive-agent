@@ -30,6 +30,8 @@ REPO_URL="https://github.com/ggerganov/llama.cpp"
 if [ -d "$LLAMA_DIR" ]; then
     echo "Updating llama.cpp..."
     cd "$LLAMA_DIR"
+    git fetch origin
+    git reset --hard origin/master
     git pull
 else
     echo "Cloning llama.cpp..."
