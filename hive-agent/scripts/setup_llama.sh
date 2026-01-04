@@ -40,7 +40,7 @@ if [ -d "$LLAMA_DIR" ]; then
     echo "Updating llama.cpp..."
     cd "$LLAMA_DIR"
     git fetch origin
-    git reset --hard origin/maste
+    git reset --hard origin/master
     git pull
 else
     echo "Cloning llama.cpp..."
