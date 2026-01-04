@@ -27,12 +27,11 @@ impl LlamaCppBackend {
         
         info!("Found setup script at: {}", found_path);
         
-        // FAIL-SAFE: Unixify line endings
+        // FAIL-SAFE: Unixify line endings using tr (safer than sed which might misinterpret \r as 'r')
         let _ = Command::new("wsl")
-            .arg("sed")
-            .arg("-i")
-            .arg("s/\\r$//")
-            .arg(found_path)
+            .arg("bash")
+            .arg("-c")
+            .arg(format!("tr -d '\\r' < {} > {}.tmp && mv {}.tmp {}", found_path, found_path, found_path, found_path))
             .status();
         
         let status = Command::new("wsl")
