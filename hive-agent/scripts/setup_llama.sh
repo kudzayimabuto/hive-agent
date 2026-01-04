@@ -1,17 +1,27 @@
 #!/bin/bash
 set -e
 
-# Check for required tools
-if ! command -v g++ &> /dev/null; then
-    echo "Error: g++ (C++ compiler) not found."
-    echo "Please install it in WSL using: sudo apt-get update && sudo apt-get install -y build-essential"
-    exit 1
-fi
+# Check and install essential build tools
+echo "Checking dependencies..."
+sudo apt-get update
+sudo apt-get install -y build-essential cmake
 
-if ! command -v cmake &> /dev/null; then
-    echo "Error: cmake not found."
-    echo "Please install it in WSL using: sudo apt-get update && sudo apt-get install -y cmake"
-    exit 1
+# Check if we have an NVIDIA GPU
+if command -v nvidia-smi &> /dev/null; then
+    echo "NVIDIA GPU detected. Checking for CUDA toolkit..."
+    if ! command -v nvcc &> /dev/null; then
+        echo "CUDA Toolkit (nvcc) not found. Installing..."
+        sudo apt-get install -y nvidia-cuda-toolkit
+    fi
+    
+    # GCC 13/12 often causes issues with CUDA compilation in WSL
+    # We force install GCC 11 for compatibility
+    echo "Ensuring compatible GCC-11 is installed..."
+    sudo apt-get install -y gcc-11 g++-11
+    
+    export CC=gcc-11
+    export CXX=g++-11
+    export CUDACXX=/usr/lib/nvidia-cuda-toolkit/bin/nvcc
 fi
 
 LLAMA_DIR="$HOME/llama.cpp"
@@ -32,13 +42,19 @@ echo "Configuring CMake..."
 mkdir -p build
 cd build
 
-# Detect GPU
+# Detect GPU and Configure
 if command -v nvidia-smi &> /dev/null; then
     echo "NVIDIA GPU detected. Building with CUDA support..."
-    cmake .. -DGGML_RPC=ON -DGGML_CUDA=ON
+    # User reported issues requiring explicit arch or fatbin off
+    cmake .. \
+        -DGGML_RPC=ON \
+        -DGGML_CUDA=ON \
+        -DGGML_CUDA_FATBIN=OFF \
+        -DCMAKE_CUDA_ARCHITECTURES=native \
+        -DCMAKE_BUILD_TYPE=Release
 else
     echo "No NVIDIA GPU detected. Building for CPU..."
-    cmake .. -DGGML_RPC=ON
+    cmake .. -DGGML_RPC=ON -DCMAKE_BUILD_TYPE=Release
 fi
 
 echo "Building..."
