@@ -134,9 +134,9 @@ impl LlamaCppBackend {
         let wsl_model_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
         println!("[Debug] Resolved wsl_model_path: '{}'", wsl_model_path);
 
-        // Explicitly disable conversation mode to prevent interactive hang
+        // Use --single-turn to force exit after one response (keeps chat template but prevents interactive loop)
         let cmd = format!(
-            "$HOME/llama.cpp/build/bin/llama-cli -m {} -p \"{}\" --rpc {} -ngl {} -n 128",
+            "$HOME/llama.cpp/build/bin/llama-cli -m {} -p \"{}\" --rpc {} -ngl {} -n 128 --single-turn",
             wsl_model_path, prompt, worker_rpc, ngl
         );
 
