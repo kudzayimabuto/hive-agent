@@ -35,12 +35,12 @@ impl LlamaCppBackend {
         // To suppress warning, we check it.
         let cmd = if let Some(vram) = vram_reserve {
              // Example: if we supported --vram-reserve
-             // format!("$HOME/llama.cpp/bin/rpc-server -p {} --host 0.0.0.0 --vram-reserve {}", port, vram)
+             // format!("$HOME/llama.cpp/build/bin/rpc-server -p {} --host 0.0.0.0 --vram-reserve {}", port, vram)
              // But for now, just same command
              info!("VRAM reserve requested: {} (Note: passing to rpc-server if supported)", vram);
-             format!("$HOME/llama.cpp/bin/rpc-server -p {} --host 0.0.0.0", port)
+             format!("$HOME/llama.cpp/build/bin/rpc-server -p {} --host 0.0.0.0", port)
         } else {
-             format!("$HOME/llama.cpp/bin/rpc-server -p {} --host 0.0.0.0", port)
+             format!("$HOME/llama.cpp/build/bin/rpc-server -p {} --host 0.0.0.0", port)
         };
 
         // We run this interactively or let it stream to stdout
@@ -78,7 +78,7 @@ impl LlamaCppBackend {
 
         // Spec command: ./bin/llama-cli -m models/... -p "..." --rpc ... -ngl ...
         let cmd = format!(
-            "$HOME/llama.cpp/bin/llama-cli -m {} -p \"{}\" --rpc {} -ngl {}",
+            "$HOME/llama.cpp/build/bin/llama-cli -m {} -p \"{}\" --rpc {} -ngl {}",
             wsl_model_path, prompt, worker_rpc, ngl
         );
 
