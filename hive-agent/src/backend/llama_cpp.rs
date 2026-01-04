@@ -85,19 +85,16 @@ impl LlamaCppBackend {
     pub fn start_controller(model_path: &str, prompt: &str, worker_rpc: &str, ngl: usize) -> Result<(), String> {
         info!("Starting llama.cpp Client (Controller)...");
         
-        // Model path needs to be accessible in WSL.
-        // If model_path is C:\..., we need to convert to /mnt/c/...
-        // A simple heuristic for now:
-        let wsl_model_path = if model_path.contains(":") {
-             let replace = model_path.replace("\\", "/").replace(":", "");
-             // drive letter handling (c: -> /mnt/c)
-             // simplified: assume lowercase drive c
-             // This is brittle, but sufficient for proof of concept if user provides relative path or we automate it.
-             // Better: User provides relative path from hive-agent root.
-             format!("/mnt/{}", replace.replacen("C", "c", 1))
-        } else {
-            model_path.to_string()
-        };
+        // Use wslpath to canonicalize the path for WSL
+        let output = Command::new("wsl")
+            .arg("wslpath")
+            .arg("-a")
+            .arg(model_path)
+            .output()
+            .map_err(|e| format!("Failed to run wslpath: {}", e))?;
+            
+        let wsl_model_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        info!("Converted model path: {} -> {}", model_path, wsl_model_path);
 
         // Spec command: ./bin/llama-cli -m models/... -p "..." --rpc ... -ngl ...
         let cmd = format!(
