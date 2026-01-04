@@ -129,9 +129,10 @@ impl LlamaCppBackend {
 
         let wsl_model_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-        // Use --single-turn to force exit after one response (keeps chat template but prevents interactive loop)
+        // Use --single-turn to force exit after one response
+        // Use --simple-io to ensure stdout is flushed correctly in subprocesses
         let cmd = format!(
-            "$HOME/llama.cpp/build/bin/llama-cli -m {} -p \"{}\" --rpc {} -ngl {} -n 128 --single-turn",
+            "$HOME/llama.cpp/build/bin/llama-cli -m {} -p \"{}\" --rpc {} -ngl {} -n 128 --single-turn --simple-io",
             wsl_model_path, prompt, worker_rpc, ngl
         );
 
