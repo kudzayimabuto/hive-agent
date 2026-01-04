@@ -46,7 +46,11 @@ cd build
 if command -v nvidia-smi &> /dev/null; then
     echo "NVIDIA GPU detected. Building with CUDA support..."
     # User reported issues requiring explicit arch or fatbin off
+    # Force GCC 11 for both host compilation and CUDA host compilation
     cmake .. \
+        -DCMAKE_C_COMPILER=/usr/bin/gcc-11 \
+        -DCMAKE_CXX_COMPILER=/usr/bin/g++-11 \
+        -DCMAKE_CUDA_HOST_COMPILER=/usr/bin/g++-11 \
         -DGGML_RPC=ON \
         -DGGML_CUDA=ON \
         -DGGML_CUDA_FATBIN=OFF \
