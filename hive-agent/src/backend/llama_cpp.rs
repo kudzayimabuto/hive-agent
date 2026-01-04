@@ -134,10 +134,31 @@ impl LlamaCppBackend {
         let wsl_model_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
         println!("[Debug] Resolved wsl_model_path: '{}'", wsl_model_path);
 
-        // Use -f /dev/stdin to read prompt from stdin and exit on EOF (prevents interactive hang)
+        // Generate a temporary file for the prompt to avoid stdin/interactive issues
+        let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros();
+        let prompt_file = format!("/tmp/hive_prompt_{}.txt", timestamp);
+
+        println!("[Debug] Writing prompt to temp file: {}", prompt_file);
+        
+        let mut write_child = Command::new("wsl")
+            .arg("bash")
+            .arg("-c")
+            .arg(format!("cat > {}", prompt_file))
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to spawn write process: {}", e))?;
+
+        if let Some(mut stdin) = write_child.stdin.take() {
+            if let Err(e) = stdin.write_all(prompt.as_bytes()) {
+                 eprintln!("[Debug] Failed to write prompt to temp file: {}", e);
+            }
+        }
+        write_child.wait().map_err(|e| format!("Failed to wait for write process: {}", e))?;
+
+        // Run llama-cli with -f pointing to the temp file
         let cmd = format!(
-            "$HOME/llama.cpp/build/bin/llama-cli -m {} -f /dev/stdin --rpc {} -ngl {} -n 128",
-            wsl_model_path, worker_rpc, ngl
+            "$HOME/llama.cpp/build/bin/llama-cli -m {} -f {} --rpc {} -ngl {} -n 128",
+            wsl_model_path, prompt_file, worker_rpc, ngl
         );
 
         info!("Executing oneshot command: {}", cmd);
@@ -148,26 +169,17 @@ impl LlamaCppBackend {
             .arg("bash")
             .arg("-c")
             .arg(&cmd)
-            .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| format!("Failed to spawn controller: {}", e))?;
 
-        // Write prompt to stdin to trigger generation and exit
-        if let Some(mut stdin) = child.stdin.take() {
-            println!("[Debug] Writing prompt to stdin...");
-            if let Err(e) = stdin.write_all(prompt.as_bytes()) {
-                 eprintln!("[Debug] Failed to write prompt to stdin: {}", e);
-            }
-            // stdin is dropped here, sending EOF
-        }
         let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
         let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
 
         let mut output_str = String::new();
         
-        // Spawn logs in threads to prevent deadlock (naive but works for debug)
+        // Spawn logs in threads
         let stdout_handle = std::thread::spawn(move || {
             let reader = std::io::BufReader::new(stdout);
             let mut acc = String::new();
@@ -193,7 +205,10 @@ impl LlamaCppBackend {
         let status = child.wait().map_err(|e| format!("Failed to wait on child: {}", e))?;
         
         let captured_stdout = stdout_handle.join().unwrap_or_default();
-        let _ = stderr_handle.join(); // Just finish
+        let _ = stderr_handle.join(); 
+
+        // Cleanup temp file
+        let _ = Command::new("wsl").arg("rm").arg(&prompt_file).status();
 
         println!("[Debug] Command Exit Status: {}", status);
 
