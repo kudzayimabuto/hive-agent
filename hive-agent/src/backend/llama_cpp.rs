@@ -134,10 +134,9 @@ impl LlamaCppBackend {
         let wsl_model_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
         println!("[Debug] Resolved wsl_model_path: '{}'", wsl_model_path);
 
-        // Reverting to -p prompt as it works manually, but we must ensure Stdin is closed to trigger exit
-        // and we must read output as bytes to avoid buffering hangs.
+        // Explicitly disable conversation mode to prevent interactive hang
         let cmd = format!(
-            "$HOME/llama.cpp/build/bin/llama-cli -m {} -p \"{}\" --rpc {} -ngl {} -n 128",
+            "$HOME/llama.cpp/build/bin/llama-cli -m {} -p \"{}\" --rpc {} -ngl {} -n 128 --no-cnv",
             wsl_model_path, prompt, worker_rpc, ngl
         );
 
