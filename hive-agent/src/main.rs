@@ -150,8 +150,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Commands::Worker { port, vram_reserve }) => {
             info!("Starting Worker Node...");
             // Spawn the RPC server in a background thread so we can join the P2P swarm
-            let port = *port;
-            let vram_reserve = *vram_reserve;
+            let port = port;
+            let vram_reserve = vram_reserve;
             std::thread::spawn(move || {
                 if let Err(e) = backend::llama_cpp::LlamaCppBackend::start_worker(port, vram_reserve) {
                     eprintln!("Worker RPC Setup Failed: {}", e);
