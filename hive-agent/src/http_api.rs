@@ -22,8 +22,11 @@ pub struct AppState {
     pub p2p_sender: mpsc::Sender<Message>,
     pub pending_requests: Arc<Mutex<HashMap<String, oneshot::Sender<Result<String, String>>>>>,
     pub llama_server_port: Option<u16>,
+    pub server_process: Arc<Mutex<Option<std::process::Child>>>,
+    pub current_config: Arc<Mutex<Option<ServerConfig>>>,
 }
 
+#[derive(Clone, PartialEq)]
 pub struct ServerConfig {
     pub model_path: String,
     pub rpc_endpoint: String,
@@ -37,9 +40,9 @@ pub async fn start_server(
     pending_requests: Arc<Mutex<HashMap<String, oneshot::Sender<Result<String, String>>>>>,
     config: Option<ServerConfig>,
 ) {
-    let mut server_port = None;
+    let mut server_process = None;
 
-    if let Some(cfg) = config {
+    if let Some(cfg) = &config {
         println!("Initializing persistent llama-server...");
         // Pick a port (8081 for now, could be dynamic)
         let port = 8081;
@@ -47,13 +50,7 @@ pub async fn start_server(
             Ok(child) => {
                 println!("llama-server started on port {}", port);
                 server_port = Some(port);
-                // Leaking child to keep it running? ideally we store the handle but for now let it run detached 
-                // or we rely on the OS cleaning it up when parent dies.
-                // Rust Command Drop kills the child? No, not unless we call kill. 
-                // Actually, if we drop Child, it does NOT kill it by default in standard lib, 
-                // but we should verify. (Docs say: "The child process will continue running even if the Child handle is dropped")
-                // Perfect.
-                std::mem::forget(child); 
+                server_process = Some(child);
             },
             Err(e) => eprintln!("Failed to start llama-server: {}", e),
         }
@@ -65,6 +62,8 @@ pub async fn start_server(
         p2p_sender, 
         pending_requests,
         llama_server_port: server_port,
+        server_process: Arc::new(Mutex::new(server_process)),
+        current_config: Arc::new(Mutex::new(config)),
     };
 
     // Create models directory if it doesn't exist
@@ -289,51 +288,126 @@ async fn run_inference(
         }
     }
 
-    if let Some(rpc_url) = worker_rpc_url {
-        println!("Offloading inference to Worker: {}", rpc_url);
-        
-        // Check if we have a persistent server running and if it matches the discovered RPC? 
-        // Our simplified logic: If we started a server with --rpc configured, we use THAT.
-        // But wait, dynamic discovery finds NEW peers.
-        // The persistent server is static (started at launch).
-        // 
-        // Optimization: If `state.llama_server_port` is set, we prefer that IF the discovered peer matches?
-        // Actually, for this specific user request ("keep shards on node b"), they likely provided the RPC config manually 
-        // or we expect the static config to handle it.
-        // 
-        // If we have a local server running (which implies we have a static connection), let's use it.
-        if let Some(port) = state.llama_server_port {
-             println!("Using persistent local server on port {}", port);
-             let prompt_clone = prompt.clone();
-             let result = tokio::task::spawn_blocking(move || {
-                 // We need an async runtime inside spawn_blocking? No, LlamaCppBackend::generate_completion is async.
-                 // We should just call it directly in the async handler.
-                 tokio::runtime::Handle::current().block_on(async {
-                     LlamaCppBackend::generate_completion(&prompt_clone, port).await
-                 })
-             }).await;
+    // HOT SWAP LOGIC
+    // Check if we need to switch the model
+    let desired_model = model_path.clone();
+    
+    // For now, we reuse the RPC endpoint from the startup config if available, 
+    // or from dynamic discovery if it's a new peer.
+    // If we have a current config, use its RPC endpoint, otherwise use the discovered one.
+    
+    let mut current_config_guard = state.current_config.lock().unwrap();
+    let mut server_process_guard = state.server_process.lock().unwrap();
+    
+    // Determine target RPC
+    let target_rpc = if let Some(cfg) = current_config_guard.as_ref() {
+        cfg.rpc_endpoint.clone()
+    } else if let Some(rpc) = worker_rpc_url {
+         rpc
+    } else {
+        // No RPC available anywhere? Fallback or error.
+        "127.0.0.1:50052".to_string() // Default?
+    };
 
-             match result {
-                 Ok(Ok(output)) => return Json(json!({ "result": output })),
-                 Ok(Err(e)) => return Json(json!({ "error": e })),
-                 Err(_) => return Json(json!({ "error": "Internal server error" })),
-            }
+    let target_ngl = if let Some(cfg) = current_config_guard.as_ref() {
+        cfg.ngl
+    } else {
+        99
+    };
+
+    let needs_switch = if let Some(cfg) = current_config_guard.as_ref() {
+        // Normalize paths for comparison (simple string compare for now)
+        cfg.model_path != desired_model
+    } else {
+        // No server running, so yes we need to start one
+        true
+    };
+
+    if needs_switch {
+        println!("Dynamic Model Switch Requested!");
+        println!("Old Model: {:?}", current_config_guard.as_ref().map(|c| c.model_path.clone()));
+        println!("New Model: {}", desired_model);
+
+        // 1. Kill existing server if any
+        if let Some(mut child) = server_process_guard.take() {
+            println!("Stopping current llama-server...");
+            let _ = child.kill();
+            let _ = child.wait(); // Verify it's dead
         }
 
-        // Fallback to legacy oneshot if no server is running (or new dynamic peer)
-        // Since we removed generate_oneshot, this path is now dead or needs re-implementation.
-        // For now, let's assume we ONLY support the server path if optimized. 
-        // But wait, what if we found a dynamic peer but didn't start the server?
-        // We need to either start a server dynamically OR fail back to CLI.
-        // But I removed generate_oneshot. 
-        // CRITICAL FIX: I should have kept generate_oneshot for dynamic peers.
-        // Since I can't undelete easily without reverting, I will assume for this task
-        // we heavily rely on the static config. 
-        // BUT, I can re-add a simple CLI call here if needed.
-        // Let's rely on the server validation for now.
+        // 2. Start new server
+        // Use a fixed port for now
+        let port = 8081; 
         
-        return Json(json!({ "error": "Dynamic peer found but no persistent server running. Please restart with --rpc and --model flags to enable fast inference." }));
+        // We need an RPC endpoint. 
+        // If we are hot-swapping, we assume we want to keep using the same worker?
+        if target_rpc.is_empty() {
+             return Json(json!({ "error": "Cannot hot-swap: No RPC endpoint known." }));
+        }
+
+        match LlamaCppBackend::start_server(&desired_model, port, &target_rpc, target_ngl) {
+             Ok(child) => {
+                 println!("New llama-server started on port {}", port);
+                 *server_process_guard = Some(child);
+                 *current_config_guard = Some(ServerConfig {
+                     model_path: desired_model.clone(),
+                     rpc_endpoint: target_rpc,
+                     ngl: target_ngl,
+                 });
+                 
+                 // Give it a moment to initialize? 
+                 // The first request might fail if we don't wait, but reqwest retry logic or basic sleep might help.
+                 // Let's add a small blocking sleep here just to be safe, though not ideal.
+                 // Better: we assume generate_completion handles connection errors, but strictly it won't retry loop.
+                 // Let's sleep 2s.
+                 std::thread::sleep(std::time::Duration::from_secs(2));
+             },
+             Err(e) => {
+                 return Json(json!({ "error": format!("Failed to start new model server: {}", e) }));
+             }
+        }
     }
+
+    // Release locks before long-running operation
+    drop(current_config_guard);
+    drop(server_process_guard);
+
+    // Now call the server
+    if let Some(port) = state.llama_server_port { // This port comes from initial setup, 8081.
+         // If we hot swapped, we reused 8081.
+         let actual_port = 8081; 
+         println!("Using persistent local server on port {}", actual_port);
+         let prompt_clone = prompt.clone();
+         let result = tokio::task::spawn_blocking(move || {
+             tokio::runtime::Handle::current().block_on(async {
+                 // Retry loop for the new server potentially warming up
+                 let mut attempts = 0;
+                 loop {
+                     match LlamaCppBackend::generate_completion(&prompt_clone, actual_port).await {
+                         Ok(res) => return Ok(res),
+                         Err(e) => {
+                             attempts += 1;
+                             if attempts > 5 {
+                                 return Err(e);
+                             }
+                             // Server might be loading model
+                             std::thread::sleep(std::time::Duration::from_secs(2));
+                             continue;
+                         }
+                     }
+                 }
+             })
+         }).await;
+
+         match result {
+             Ok(Ok(output)) => return Json(json!({ "result": output })),
+             Ok(Err(e)) => return Json(json!({ "error": e })),
+             Err(_) => return Json(json!({ "error": "Internal server error" })),
+        }
+    }
+    
+    // Fallback if somehow port is missing but we shouldn't get here easily with the new logic
+    return Json(json!({ "error": "Server configuration state invalid." }));
 
     // Fallback to Local Inference if no peers found
     println!("No suitable peers found. Running locally.");
