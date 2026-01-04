@@ -198,6 +198,9 @@ impl LlamaCppBackend {
         let captured_stdout = stdout_handle.join().unwrap_or_default();
         let _ = stderr_handle.join();
 
+        info!("Captured Output Length: {}", captured_stdout.len());
+        println!("[Debug] Captured Stdout: '{}'", captured_stdout);
+
         if status.success() {
              Ok(captured_stdout)
         } else {
