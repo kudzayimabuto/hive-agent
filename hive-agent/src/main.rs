@@ -39,7 +39,14 @@ struct Args {
 #[derive(Subcommand, Debug)]
 enum Commands {
     /// Start the agent
-    Start,
+    Start {
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long)]
+        rpc: Option<String>, // e.g., 192.168.x.20:50052
+        #[arg(long, default_value_t = 99)]
+        ngl: usize,
+    },
     /// Upload a file to the Hive
     Upload {
         path: String,
@@ -165,7 +172,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
 
-        None | Some(Commands::Start) => {
+        None | Some(Commands::Start { .. }) => {
             // Continue to start the agent
         }
     }
@@ -187,8 +194,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_tx = tx.clone();
     let api_pending = pending_requests.clone();
     
+    // Extract config from args if Start command is used
+    let server_config = match &args.command {
+        Some(Commands::Start { model: Some(m), rpc: Some(r), ngl }) => {
+            Some(http_api::ServerConfig {
+                model_path: m.clone(),
+                rpc_endpoint: r.clone(),
+                ngl: *ngl,
+            })
+        },
+         _ => None
+    };
+
     tokio::spawn(async move {
-        http_api::start_server(api_engine, api_scheduler, api_tx, api_pending).await;
+        http_api::start_server(api_engine, api_scheduler, api_tx, api_pending, server_config).await;
     });
 
     // Create a random PeerId
