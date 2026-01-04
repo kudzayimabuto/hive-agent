@@ -115,4 +115,41 @@ impl LlamaCppBackend {
             Err(format!("Controller exited with status: {}", status))
         }
     }
+
+    /// Runs a single inference and returns the output as a string (for API usage)
+    pub fn generate_oneshot(model_path: &str, prompt: &str, worker_rpc: &str, ngl: usize) -> Result<String, String> {
+        info!("Running oneshot inference...");
+        
+        let output = Command::new("wsl")
+            .arg("wslpath")
+            .arg("-a")
+            .arg(model_path)
+            .output()
+            .map_err(|e| format!("Failed to run wslpath: {}", e))?;
+            
+        let wsl_model_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+        // Use --no-interactive and -n to ensure it exits and prints to stdout
+        // We also might want to silence logs or capture them carefully.
+        // For now, we assume stdout contains the generation.
+        let cmd = format!(
+            "$HOME/llama.cpp/build/bin/llama-cli -m {} -p \"{}\" --rpc {} -ngl {} -n 128",
+            wsl_model_path, prompt, worker_rpc, ngl
+        );
+
+        let output = Command::new("wsl")
+            .arg("bash")
+            .arg("-c")
+            .arg(&cmd)
+            .output()
+            .map_err(|e| format!("Failed to run controller: {}", e))?;
+
+        if output.status.success() {
+             let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+             Ok(stdout)
+        } else {
+             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+             Err(format!("Inference failed: {}", stderr))
+        }
+    }
 }

@@ -148,13 +148,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Ok(());
         }
         Some(Commands::Worker { port, vram_reserve }) => {
-            backend::llama_cpp::LlamaCppBackend::start_worker(port, vram_reserve).map_err(|e| e.to_string())?;
-            return Ok(());
+            info!("Starting Worker Node...");
+            // Spawn the RPC server in a background thread so we can join the P2P swarm
+            let port = *port;
+            let vram_reserve = *vram_reserve;
+            std::thread::spawn(move || {
+                if let Err(e) = backend::llama_cpp::LlamaCppBackend::start_worker(port, vram_reserve) {
+                    eprintln!("Worker RPC Setup Failed: {}", e);
+                    std::process::exit(1);
+                }
+            });
+            // Fallthrough to join Swarm
         }
         Some(Commands::Controller { model, prompt, rpc, ngl }) => {
             backend::llama_cpp::LlamaCppBackend::start_controller(&model, &prompt, &rpc, ngl).map_err(|e| e.to_string())?;
             return Ok(());
         }
+
         None | Some(Commands::Start) => {
             // Continue to start the agent
         }

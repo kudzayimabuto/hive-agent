@@ -1,0 +1,145 @@
+    Checking hive-agent v0.1.0 (C:\Users\mabut\.gemini\antigravity\scratch\hive\hive-agent)
+warning: unused import: `ggml_file`
+ --> hive-agent\src\model\sharded_llama.rs:3:30
+  |
+3 | use candle_core::quantized::{ggml_file, gguf_file};
+  |                              ^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: use of deprecated function `rand::thread_rng`: Renamed to `rng`
+  --> hive-agent\src\compute.rs:13:29
+   |
+13 |         let mut rng = rand::thread_rng();
+   |                             ^^^^^^^^^^
+   |
+   = note: `#[warn(deprecated)]` on by default
+
+warning: use of deprecated method `rand::Rng::gen`: Renamed to `random` to avoid conflict with the new `gen` keyword in Rust 2024.
+  --> hive-agent\src\compute.rs:14:53
+   |
+14 |         Array2::from_shape_fn((rows, cols), |_| rng.gen::<f32>())
+   |                                                     ^^^
+
+error[E0308]: mismatched types
+   --> hive-agent\src\main.rs:147:13
+    |
+ 94 | /     match args.command {
+ 95 | |         Some(Commands::Upload { path }) => {
+ 96 | |             let data = tokio::fs::read(&path).await?;
+ 97 | |             let cid = storage.store(&data).await?;
+...   |
+147 | |             backend::llama_cpp::LlamaCppBackend::setup().map_err(|e| e.into())
+    | |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `()`, found `Result<(), _>`
+...   |
+158 | |     }
+    | |_____- expected this to be `()`
+    |
+    = note: expected unit type `()`
+                    found enum `Result<(), _>`
+note: return type inferred to be `()` here
+   --> hive-agent\src\main.rs:91:19
+    |
+ 91 |     let storage = Storage::new(".hive/storage").await?;
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: consider using a semicolon here
+    |
+147 |             backend::llama_cpp::LlamaCppBackend::setup().map_err(|e| e.into());
+    |                                                                               +
+help: consider using a semicolon here
+    |
+158 |     };
+    |      +
+help: consider using `Result::expect` to unwrap the `Result<(), _>` value, panicking if the value is a `Result::Err`
+    |
+147 |             backend::llama_cpp::LlamaCppBackend::setup().map_err(|e| e.into()).expect("REASON")
+    |                                                                               +++++++++++++++++
+
+error[E0308]: mismatched types
+   --> hive-agent\src\main.rs:150:13
+    |
+ 94 | /     match args.command {
+ 95 | |         Some(Commands::Upload { path }) => {
+ 96 | |             let data = tokio::fs::read(&path).await?;
+ 97 | |             let cid = storage.store(&data).await?;
+...   |
+150 | |             backend::llama_cpp::LlamaCppBackend::start_worker(port, vram_reserve).map_err(|e| e.into())
+    | |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `()`, found `Result<(), _>`
+...   |
+158 | |     }
+    | |_____- expected this to be `()`
+    |
+    = note: expected unit type `()`
+                    found enum `Result<(), _>`
+note: return type inferred to be `()` here
+   --> hive-agent\src\main.rs:91:19
+    |
+ 91 |     let storage = Storage::new(".hive/storage").await?;
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: consider using a semicolon here
+    |
+150 |             backend::llama_cpp::LlamaCppBackend::start_worker(port, vram_reserve).map_err(|e| e.into());
+    |                                                                                                        +
+help: consider using a semicolon here
+    |
+158 |     };
+    |      +
+help: consider using `Result::expect` to unwrap the `Result<(), _>` value, panicking if the value is a `Result::Err`
+    |
+150 |             backend::llama_cpp::LlamaCppBackend::start_worker(port, vram_reserve).map_err(|e| e.into()).expect("REASON")
+    |                                                                                                        +++++++++++++++++
+
+error[E0308]: mismatched types
+   --> hive-agent\src\main.rs:153:13
+    |
+ 94 | /     match args.command {
+ 95 | |         Some(Commands::Upload { path }) => {
+ 96 | |             let data = tokio::fs::read(&path).await?;
+ 97 | |             let cid = storage.store(&data).await?;
+...   |
+153 | |             backend::llama_cpp::LlamaCppBackend::start_controller(&model, &prompt, &rpc, ngl).map_err(|e| e.into())
+    | |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expected `()`, found `Result<(), _>`
+...   |
+158 | |     }
+    | |_____- expected this to be `()`
+    |
+    = note: expected unit type `()`
+                    found enum `Result<(), _>`
+note: return type inferred to be `()` here
+   --> hive-agent\src\main.rs:91:19
+    |
+ 91 |     let storage = Storage::new(".hive/storage").await?;
+    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+help: consider using a semicolon here
+    |
+153 |             backend::llama_cpp::LlamaCppBackend::start_controller(&model, &prompt, &rpc, ngl).map_err(|e| e.into());
+    |                                                                                                                    +
+help: consider using a semicolon here
+    |
+158 |     };
+    |      +
+help: consider using `Result::expect` to unwrap the `Result<(), _>` value, panicking if the value is a `Result::Err`
+    |
+153 |             backend::llama_cpp::LlamaCppBackend::start_controller(&model, &prompt, &rpc, ngl).map_err(|e| e.into()).expect("REASON")
+    |                                                                                                                    +++++++++++++++++
+
+warning: value assigned to `cmd` is never read
+  --> hive-agent\src\backend\llama_cpp.rs:33:17
+   |
+33 |         let mut cmd = format!("$HOME/llama.cpp/bin/llama-server -p {} --host 0.0.0.0", port);
+   |                 ^^^
+   |
+   = help: maybe it is overwritten before being read?
+   = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `vram`
+  --> hive-agent\src\backend\llama_cpp.rs:35:21
+   |
+35 |         if let Some(vram) = vram_reserve {
+   |                     ^^^^ help: if this is intentional, prefix it with an underscore: `_vram`
+   |
+   = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+For more information about this error, try `rustc --explain E0308`.
+warning: `hive-agent` (bin "hive-agent") generated 5 warnings
+error: could not compile `hive-agent` (bin "hive-agent") due to 3 previous errors; 5 warnings emitted

@@ -9,6 +9,7 @@ use tower_http::cors::CorsLayer;
 use crate::inference::InferenceEngine;
 use crate::scheduler::Scheduler;
 use crate::message::Message;
+use crate::backend::llama_cpp::LlamaCppBackend;
 use std::io::Write;
 use std::collections::HashMap;
 use tokio::sync::{mpsc, oneshot};
@@ -28,7 +29,12 @@ pub async fn start_server(
     p2p_sender: mpsc::Sender<Message>,
     pending_requests: Arc<Mutex<HashMap<String, oneshot::Sender<Result<String, String>>>>>,
 ) {
-    let state = AppState { inference_engine, scheduler, p2p_sender, pending_requests };
+    let state = AppState { 
+        inference_engine, 
+        scheduler, 
+        p2p_sender, 
+        pending_requests
+    };
 
     // Create models directory if it doesn't exist
     let _ = std::fs::create_dir_all("models");
@@ -218,10 +224,67 @@ async fn run_inference(
     println!("Received inference request: {}", prompt);
     println!("Using tokenizer: {}", tokenizer_path);
 
-    // Check if we have peers
-    let peer_count = state.scheduler.lock().unwrap().peers.len();
+
+
+    // Dynamic Discovery: Check for peers in the swarm
+    let peers = {
+        let scheduler = state.scheduler.lock().unwrap();
+        scheduler.peers.clone()
+    };
     
-    if peer_count > 0 {
+    // Find the first peer with a valid IP4 address
+    let mut worker_rpc_url = None;
+    
+    for (peer_id, info) in peers {
+        for addr in info.address {
+            // Extract IP from Multiaddr (e.g., /ip4/192.168.1.10/tcp/1234)
+            // We need to parse it string-wise or use Multiaddr methods
+            let addr_str = addr.to_string();
+            if addr_str.contains("/ip4/") && !addr_str.contains("127.0.0.1") {
+                // Parse out the IP. Hacky string parsing for now.
+                // Format is usually /ip4/<ip>/tcp/<port>
+                let parts: Vec<&str> = addr_str.split('/').collect();
+                if parts.len() >= 3 && parts[1] == "ip4" {
+                    let ip = parts[2];
+                    // Assume default worker port 50052
+                    worker_rpc_url = Some(format!("{}:50052", ip));
+                    println!("Discovered Peer {} at {}. Using RPC: {}", peer_id, ip, worker_rpc_url.as_ref().unwrap());
+                    break;
+                }
+            }
+        }
+        if worker_rpc_url.is_some() {
+            break;
+        }
+    }
+
+    if let Some(rpc_url) = worker_rpc_url {
+        println!("Offloading inference to Worker: {}", rpc_url);
+        
+        let result = tokio::task::spawn_blocking({
+            let prompt = prompt.clone();
+            let model = model_path.clone(); // Use the requested model path
+            let rpc = rpc_url;
+            let ngl = 99; // Default to full offload for discovered peers
+            move || {
+                LlamaCppBackend::generate_oneshot(&model, &prompt, &rpc, ngl)
+            }
+        }).await;
+
+         match result {
+             Ok(Ok(output)) => return Json(json!({ "result": output })),
+             Ok(Err(e)) => return Json(json!({ "error": e })),
+             Err(_) => return Json(json!({ "error": "Internal server error" })),
+        }
+    }
+
+    // Fallback to Local Inference if no peers found
+    println!("No suitable peers found. Running locally.");
+    
+    let peer_count = state.scheduler.lock().unwrap().peers.len(); // Re-check for other logic if needed, but we already tried.
+    
+    if false { // Disable the old "Broadcasting task" block since we handled it above via RPC
+
         // Distributed Inference
         println!("Broadcasting task to {} peers...", peer_count);
         let task_id = uuid::Uuid::new_v4().to_string();
