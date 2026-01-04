@@ -1,5 +1,6 @@
 use std::process::Command;
 use tracing::info;
+use std::io::BufRead;
 
 pub struct LlamaCppBackend;
 
