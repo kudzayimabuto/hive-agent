@@ -8,23 +8,38 @@ impl LlamaCppBackend {
     pub fn setup() -> Result<(), String> {
         info!("Setting up llama.cpp in WSL...");
         
-        let script_path = "./scripts/setup_llama.sh";
-
-        // DEBUG: Check location and file existence
+    pub fn setup() -> Result<(), String> {
+        info!("Setting up llama.cpp in WSL...");
+        
+        // DEBUG: Print current directory in WSL
         let _ = Command::new("wsl").arg("pwd").status();
-        let _ = Command::new("wsl").arg("ls").arg("-l").arg(script_path).status();
+        let _ = Command::new("wsl").arg("ls").arg("-la").status();
 
-        // FAIL-SAFE: Unixify line endings just in case git checkout messed up
+        // Dynamic script finding to handle repo structure variations
+        let output = Command::new("wsl")
+            .arg("find")
+            .arg(".")
+            .arg("-name")
+            .arg("setup_llama.sh")
+            .output()
+            .map_err(|e| format!("Failed to run find command: {}", e))?;
+        
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let found_path = stdout.lines().next().ok_or("Could not find scripts/setup_llama.sh in current directory or subdirectories.")?.trim();
+        
+        info!("Found setup script at: {}", found_path);
+        
+        // FAIL-SAFE: Unixify line endings
         let _ = Command::new("wsl")
             .arg("sed")
             .arg("-i")
             .arg("s/\\r$//")
-            .arg(script_path)
+            .arg(found_path)
             .status();
         
         let status = Command::new("wsl")
             .arg("bash")
-            .arg(script_path)
+            .arg(found_path)
             .status()
             .map_err(|e| format!("Failed to execute wsl command: {}", e))?;
 
