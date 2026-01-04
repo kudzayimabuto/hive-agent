@@ -119,7 +119,6 @@ impl LlamaCppBackend {
     /// Runs a single inference and returns the output as a string (for API usage)
     pub fn generate_oneshot(model_path: &str, prompt: &str, worker_rpc: &str, ngl: usize) -> Result<String, String> {
         info!("Running oneshot inference...");
-        println!("[Debug] resolving wslpath for: '{}'", model_path);
         
         let output = Command::new("wsl")
             .arg("wslpath")
@@ -127,12 +126,8 @@ impl LlamaCppBackend {
             .arg(model_path)
             .output()
             .map_err(|e| format!("Failed to run wslpath: {}", e))?;
-            
-        println!("[Debug] wslpath output stdout: {:?}", String::from_utf8_lossy(&output.stdout));
-        println!("[Debug] wslpath output stderr: {:?}", String::from_utf8_lossy(&output.stderr));
 
         let wsl_model_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        println!("[Debug] Resolved wsl_model_path: '{}'", wsl_model_path);
 
         // Use --single-turn to force exit after one response (keeps chat template but prevents interactive loop)
         let cmd = format!(
@@ -141,7 +136,6 @@ impl LlamaCppBackend {
         );
 
         info!("Executing oneshot command: {}", cmd);
-        println!("[Debug] Full Command: wsl bash -c '{}'", cmd);
 
         // Streaming execution
         let mut child = Command::new("wsl")
@@ -203,8 +197,6 @@ impl LlamaCppBackend {
 
         let captured_stdout = stdout_handle.join().unwrap_or_default();
         let _ = stderr_handle.join();
-
-        println!("[Debug] Command Exit Status: {}", status);
 
         if status.success() {
              Ok(captured_stdout)
