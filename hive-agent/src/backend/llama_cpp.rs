@@ -136,7 +136,7 @@ impl LlamaCppBackend {
 
         // Explicitly disable conversation mode to prevent interactive hang
         let cmd = format!(
-            "$HOME/llama.cpp/build/bin/llama-cli -m {} -p \"{}\" --rpc {} -ngl {} -n 128 --no-cnv",
+            "$HOME/llama.cpp/build/bin/llama-cli -m {} -p \"{}\" --rpc {} -ngl {} -n 128",
             wsl_model_path, prompt, worker_rpc, ngl
         );
 
