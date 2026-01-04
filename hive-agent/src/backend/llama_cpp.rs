@@ -134,31 +134,11 @@ impl LlamaCppBackend {
         let wsl_model_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
         println!("[Debug] Resolved wsl_model_path: '{}'", wsl_model_path);
 
-        // Generate a temporary file for the prompt to avoid stdin/interactive issues
-        let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_micros();
-        let prompt_file = format!("/tmp/hive_prompt_{}.txt", timestamp);
-
-        println!("[Debug] Writing prompt to temp file: {}", prompt_file);
-        
-        let mut write_child = Command::new("wsl")
-            .arg("bash")
-            .arg("-c")
-            .arg(format!("cat > {}", prompt_file))
-            .stdin(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Failed to spawn write process: {}", e))?;
-
-        if let Some(mut stdin) = write_child.stdin.take() {
-            if let Err(e) = stdin.write_all(prompt.as_bytes()) {
-                 eprintln!("[Debug] Failed to write prompt to temp file: {}", e);
-            }
-        }
-        write_child.wait().map_err(|e| format!("Failed to wait for write process: {}", e))?;
-
-        // Run llama-cli with -f pointing to the temp file
+        // Reverting to -p prompt as it works manually, but we must ensure Stdin is closed to trigger exit
+        // and we must read output as bytes to avoid buffering hangs.
         let cmd = format!(
-            "$HOME/llama.cpp/build/bin/llama-cli -m {} -f {} --rpc {} -ngl {} -n 128",
-            wsl_model_path, prompt_file, worker_rpc, ngl
+            "$HOME/llama.cpp/build/bin/llama-cli -m {} -p \"{}\" --rpc {} -ngl {} -n 128",
+            wsl_model_path, prompt, worker_rpc, ngl
         );
 
         info!("Executing oneshot command: {}", cmd);
@@ -169,46 +149,61 @@ impl LlamaCppBackend {
             .arg("bash")
             .arg("-c")
             .arg(&cmd)
+            .stdin(std::process::Stdio::piped()) // Pipe so we can close it
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| format!("Failed to spawn controller: {}", e))?;
 
-        let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
-        let stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
+        // Explicitly drop stdin to send EOF
+        drop(child.stdin.take());
 
-        let mut output_str = String::new();
-        
-        // Spawn logs in threads
+        let mut stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
+        let mut stderr = child.stderr.take().ok_or("Failed to capture stderr")?;
+
+        // Context for output capturing
         let stdout_handle = std::thread::spawn(move || {
-            let reader = std::io::BufReader::new(stdout);
-            let mut acc = String::new();
-            for line in reader.lines() {
-                if let Ok(l) = line {
-                    println!("[llama-cli] {}", l);
-                    acc.push_str(&l);
-                    acc.push('\n');
+            let mut buffer = [0u8; 1024]; // Read in chunks
+            let mut acc = Vec::new(); // Accumulate raw bytes
+            loop {
+                match stdout.read(&mut buffer) {
+                    Ok(0) => break, // EOF
+                    Ok(n) => {
+                        let chunk = &buffer[0..n];
+                        // Verify valid UTF-8 for printing, strictly for debug
+                        let s = String::from_utf8_lossy(chunk);
+                        print!("{}", s); // Print to console immediately
+                        let _ = std::io::stdout().flush();
+                        acc.extend_from_slice(chunk);
+                    }
+                    Err(_) => break,
                 }
             }
-            acc
+            String::from_utf8_lossy(&acc).to_string()
         });
 
         let stderr_handle = std::thread::spawn(move || {
-            let reader = std::io::BufReader::new(stderr);
-            for line in reader.lines() {
-                if let Ok(l) = line {
-                    eprintln!("[llama-cli error] {}", l);
+            let mut buffer = [0u8; 1024];
+            loop {
+                match stderr.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let s = String::from_utf8_lossy(&buffer[0..n]);
+                        eprint!("{}", s);
+                        let _ = std::io::stderr().flush();
+                    }
+                    Err(_) => break,
                 }
             }
         });
 
         let status = child.wait().map_err(|e| format!("Failed to wait on child: {}", e))?;
         
-        let captured_stdout = stdout_handle.join().unwrap_or_default();
-        let _ = stderr_handle.join(); 
+        // Cleanup temp file if it existed (not used here anymore)
+        // let _ = Command::new("wsl").arg("rm").arg(&prompt_file).status();
 
-        // Cleanup temp file
-        let _ = Command::new("wsl").arg("rm").arg(&prompt_file).status();
+        let captured_stdout = stdout_handle.join().unwrap_or_default();
+        let _ = stderr_handle.join();
 
         println!("[Debug] Command Exit Status: {}", status);
 
