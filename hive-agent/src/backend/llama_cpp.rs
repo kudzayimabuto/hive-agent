@@ -5,9 +5,7 @@ pub struct LlamaCppBackend;
 
 impl LlamaCppBackend {
     /// Runs the setup script in WSL to build llama.cpp
-    pub fn setup() -> Result<(), String> {
-        info!("Setting up llama.cpp in WSL...");
-        
+
     pub fn setup() -> Result<(), String> {
         info!("Setting up llama.cpp in WSL...");
         
