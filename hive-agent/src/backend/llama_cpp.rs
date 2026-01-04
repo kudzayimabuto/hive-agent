@@ -98,7 +98,7 @@ impl LlamaCppBackend {
 
         // Spec command: ./bin/llama-cli -m models/... -p "..." --rpc ... -ngl ...
         let cmd = format!(
-            "$HOME/llama.cpp/build/bin/llama-cli -m {} -p \"{}\" --rpc {} -ngl {}",
+            "$HOME/llama.cpp/build/bin/llama-cli -m {} -p \"{}\" --rpc {} -ngl {} --verbose",
             wsl_model_path, prompt, worker_rpc, ngl
         );
 
